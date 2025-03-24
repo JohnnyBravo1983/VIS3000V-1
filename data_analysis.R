@@ -12,61 +12,6 @@ str(dataset)
 test_data()
 
 
-# Convert sales_date and modify_date to date format
-dataset$sales_date <- as.POSIXct(dataset$sales_date, format = "%Y-%m-%dT%H:%M:%SZ")
-dataset$modify_date <- as.POSIXct(dataset$modify_date, format = "%Y-%m-%dT%H:%M:%SZ")
-
-avg_sale <- function() {
-  # Total sale and average tatal price
-total_sales <- sum(dataset$total_price)
-avg_total_price <- mean(dataset$total_price)
-
-#https://stackoverflow.com/questions/15589601/print-string-and-variable-contents-on-the-same-line-in-r
-cat("Total sales: \n", total_sales)
-cat("Average: ", avg_total_price)
-}
-
-avg_sale()
-
-
-
-
-# Transaction amount per month function
-#https://www.w3schools.com/r/tryr.asp?filename=demo_function
-transaction_per_month <- function() {   
-  monthly_sales <- dataset %>%
-    mutate(month = format(as.Date(sales_date, format="%Y-%m-%dT%H:%M:%SZ"), "%Y-%m")) %>%
-    group_by(month) %>%
-    summarise(
-      total_transactions = n(),
-      total_sales_month = sum(total_price),
-      avg_price_month = mean(total_price)
-    ) %>%
-    arrange(month)
-
-  # Show the results
-  print(monthly_sales)
-}
-
-# Calling the function
-transaction_per_month()
-
-
-
-# Check if there were any sales in june 2018
-checkIf_june_sale <- function() {
-  library(dplyr)
-
-june_sales <- dataset %>%
-  filter(format(as.Date(sales_date), "%Y-%m") == "2018-06")
-
-#Shsow results
-cat("June sales:\n")
-print(june_sales)
-}
-
-checkIf_june_sale()
-
 
 
 library(ggplot2)
@@ -183,7 +128,7 @@ sales_per_category <- function() {
 category_sales_data <- sales_per_category()
 
 
-library(scales)  # Importer scales-pakken for å formatere tall
+library(scales)  
 
 # Function to create a bar plot of sales per category
 plot_sales_per_category <- function(category_sales_data) {
@@ -204,11 +149,75 @@ plot_sales_per_category(category_sales_data)
 
 
 
+sales_per_category_line_plot <- function() {
+  library(dplyr)
+  library(ggplot2)
+
+  # Filter data to only include sales between January 2018 and May 2018
+  dataset_filtered <- dataset %>%
+    filter(as.Date(sales_date) >= as.Date("2018-01-01") & as.Date(sales_date) <= as.Date("2018-05-31"))
+
+  # Calculate total transactions per category for each month
+  category_trends <- dataset_filtered %>%
+    mutate(month = format(as.POSIXct(sales_date, format="%Y-%m-%dT%H:%M:%SZ"), "%Y-%m")) %>%
+    group_by(month, category_name) %>%
+    summarise(
+      total_sales = sum(total_price),
+      total_transactions = n(),
+      .groups = "drop"
+    ) %>%
+    arrange(month)  # Sort by month to make sure the trend is ordered
+
+  # Ensure we have all months (from Jan to May) even if some categories don't have sales in certain months
+  months <- seq.Date(from = as.Date("2018-01-01"), to = as.Date("2018-05-31"), by = "month")
+  months <- format(months, "%Y-%m")
+
+  # Create a full data frame with all months and categories
+  full_data <- expand.grid(month = months, category_name = unique(dataset_filtered$category_name))
+  full_data <- full_data %>%
+    left_join(category_trends, by = c("month", "category_name")) %>%
+    replace_na(list(total_sales = 0, total_transactions = 0))  # Replace NAs with 0 for missing data
+
+  # Visualize the data with a line plot using ggplot2
+  category_plot <- ggplot(full_data, aes(x = month, y = total_transactions, color = category_name, group = category_name)) +
+    geom_line(size = 1) +  # Line for each category
+    geom_point(size = 2) +  # Points for each month
+    labs(title = "Sales Trend per Category (Jan 2018 - May 2018)",  # Title
+         x = "Month",  # x-axis label
+         y = "Total Transactions",  # y-axis label
+         color = "Category") +  # Legend title
+    theme_minimal() +  # Minimal theme
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for readability
+
+  # Print the plot
+  print(category_plot)
+  
+  return(full_data)  # Return the data frame with full trends
+}
+
+# Run the function
+sales_per_category_line_plot()
 
 
 
 
 
+
+
+
+
+
+#Count top 1000 customers with most transactions
+top5 <- c(tail(names(sort(table(dataset$customer_id))), 1000))
+print(top5)
+
+#Count occurences for top 1000 customers
+for (x in top5) {
+ y <- length(which(dataset$customer_id == x))
+ print(paste("Amount of transactions each customer: ", y, ", Customer id: ", x)) 
+}
+
+length(which(dataset$customer_id == 92528))
 #View the dataset table
 View(dataset)
 
