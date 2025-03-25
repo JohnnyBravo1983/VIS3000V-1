@@ -14,20 +14,31 @@ test_data()
 
 
 
+library(dplyr)
 library(ggplot2)
 
-# Refined sales distribution analysis with better x-axis labels
+# Function to analyze sales distribution by price range per product
 sales_distribution_analysis <- function() {
-  # Calculate key statistics
-  min_price <- min(dataset$total_price, na.rm = TRUE)
-  first_quartile <- quantile(dataset$total_price, 0.25, na.rm = TRUE)
-  median_price <- median(dataset$total_price, na.rm = TRUE)
-  mean_price <- mean(dataset$total_price, na.rm = TRUE)
-  third_quartile <- quantile(dataset$total_price, 0.75, na.rm = TRUE)
-  max_price <- max(dataset$total_price, na.rm = TRUE)
+  
+  # Remove rows where price is NA and focus on product price
+  product_sales <- dataset %>%
+    filter(!is.na(price)) %>%  # Remove rows where price is NA
+    group_by(product_name) %>%
+    summarise(
+      product_price = mean(price, na.rm = TRUE),  # Average unit price per product
+      total_sales = sum(quantity, na.rm = TRUE)  # Total quantity sold for each product
+    )
+  
+  # Calculate key statistics for product prices
+  min_price <- min(product_sales$product_price, na.rm = TRUE)
+  first_quartile <- quantile(product_sales$product_price, 0.25, na.rm = TRUE)
+  median_price <- median(product_sales$product_price, na.rm = TRUE)
+  mean_price <- mean(product_sales$product_price, na.rm = TRUE)
+  third_quartile <- quantile(product_sales$product_price, 0.75, na.rm = TRUE)
+  max_price <- max(product_sales$product_price, na.rm = TRUE)
   
   # Print the statistics to the console
-  cat("Sales Statistics:\n")
+  cat("Price Statistics:\n")
   cat("Minimum Price: ", min_price, "\n")
   cat("1st Quartile: ", first_quartile, "\n")
   cat("Median Price: ", median_price, "\n")
@@ -35,28 +46,54 @@ sales_distribution_analysis <- function() {
   cat("3rd Quartile: ", third_quartile, "\n")
   cat("Maximum Price: ", max_price, "\n\n")
   
-  # Create a histogram to visualize the sales distribution
-  sales_distribution_plot <- ggplot(dataset, aes(x = total_price)) + 
-    geom_histogram(binwidth = 250, fill = "skyblue", color = "black", alpha = 0.7) +
-    labs(title = "Sales Distribution", 
-         x = "Total Price", 
-         y = "Frequency") +
-    scale_x_continuous(breaks = seq(0, max(dataset$total_price), by = 250)) + # Adjust x-axis labels
+  # Define price bins with a $15 interval
+  price_bins <- seq(0, max(product_sales$product_price, na.rm = TRUE), by = 15)  # Intervals of 15
+  
+  # Categorize products into price ranges
+  product_sales <- product_sales %>%
+    mutate(price_range = cut(product_price, breaks = price_bins, include.lowest = TRUE, right = FALSE))
+
+  # Filter out rows with NA in the price_range column (if any products have prices outside the defined bins)
+  product_sales <- product_sales %>%
+    filter(!is.na(price_range))
+
+  # Summarize total sales per price range
+  price_distribution <- product_sales %>%
+    group_by(price_range) %>%
+    summarise(total_sales = sum(total_sales, na.rm = TRUE)) %>%
+    arrange(price_range)
+
+  # Print summarized sales per price range
+  print(price_distribution)
+
+  # Create a bar plot to visualize the most popular price ranges
+  sales_distribution_plot <- ggplot(price_distribution, aes(x = price_range, y = total_sales)) + 
+    geom_bar(stat = "identity", fill = "skyblue", color = "black", alpha = 0.7) +
+    labs(title = "Sales Distribution by Price Range (per product)", 
+         x = "Price Range (per product)", 
+         y = "Total Sales") +
     theme_minimal() +
     theme(
-      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), # Title styling
-      axis.title = element_text(size = 12), # Axis title styling
-      axis.text = element_text(size = 10),  # Axis label styling
-      panel.grid.major = element_line(color = "grey90"), # Grid styling
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Centered bold title
+      axis.title = element_text(size = 12),  # Axis titles styling
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),  # Rotate x-axis labels for better readability
+      panel.grid.major = element_line(color = "grey90"),  # Light grid lines
       panel.grid.minor = element_line(color = "grey95")
     )
-  
+
   # Print the plot
   print(sales_distribution_plot)
 }
 
 # Run the sales distribution analysis
 sales_distribution_analysis()
+
+
+
+
+
+
+
 
 
 
@@ -152,11 +189,12 @@ plot_sales_per_category(category_sales_data)
 sales_per_category_line_plot <- function() {
   library(dplyr)
   library(ggplot2)
-
+  library(tidyr)  # Add tidyr package for replace_na
+  
   # Filter data to only include sales between January 2018 and May 2018
   dataset_filtered <- dataset %>%
     filter(as.Date(sales_date) >= as.Date("2018-01-01") & as.Date(sales_date) <= as.Date("2018-05-31"))
-
+  
   # Calculate total transactions per category for each month
   category_trends <- dataset_filtered %>%
     mutate(month = format(as.POSIXct(sales_date, format="%Y-%m-%dT%H:%M:%SZ"), "%Y-%m")) %>%
@@ -167,17 +205,17 @@ sales_per_category_line_plot <- function() {
       .groups = "drop"
     ) %>%
     arrange(month)  # Sort by month to make sure the trend is ordered
-
+  
   # Ensure we have all months (from Jan to May) even if some categories don't have sales in certain months
   months <- seq.Date(from = as.Date("2018-01-01"), to = as.Date("2018-05-31"), by = "month")
   months <- format(months, "%Y-%m")
-
+  
   # Create a full data frame with all months and categories
   full_data <- expand.grid(month = months, category_name = unique(dataset_filtered$category_name))
   full_data <- full_data %>%
     left_join(category_trends, by = c("month", "category_name")) %>%
     replace_na(list(total_sales = 0, total_transactions = 0))  # Replace NAs with 0 for missing data
-
+  
   # Visualize the data with a line plot using ggplot2
   category_plot <- ggplot(full_data, aes(x = month, y = total_transactions, color = category_name, group = category_name)) +
     geom_line(size = 1) +  # Line for each category
@@ -188,7 +226,7 @@ sales_per_category_line_plot <- function() {
          color = "Category") +  # Legend title
     theme_minimal() +  # Minimal theme
     theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for readability
-
+  
   # Print the plot
   print(category_plot)
   
@@ -197,6 +235,7 @@ sales_per_category_line_plot <- function() {
 
 # Run the function
 sales_per_category_line_plot()
+
 
 
 
@@ -227,9 +266,18 @@ colnames(dataset)
 
 
 
+library(dplyr)
+
+snail_products <- dataset %>%
+  filter(category_name == "Snails") %>%
+  head(10)  # Begrens til 10 rader
+
+print(snail_products)
 
 
 
+dataset1 <- read.csv("D:/R/VIS3000V-1/sales.csv")
+View(dataset1)
 
 
 
